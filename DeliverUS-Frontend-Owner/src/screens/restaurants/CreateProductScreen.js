@@ -1,20 +1,22 @@
 import React, { useEffect, useState } from 'react'
-import { Image, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native'
+import { Image, Pressable, ScrollView, StyleSheet, Switch, View, TextError } from 'react-native'
 import * as ExpoImagePicker from 'expo-image-picker'
 import { MaterialCommunityIcons } from '@expo/vector-icons'
 import InputItem from '../../components/InputItem'
 import TextRegular from '../../components/TextRegular'
 import * as GlobalStyles from '../../styles/GlobalStyles'
 import defaultProductImage from '../../../assets/product.jpeg'
-import { getProductCategories } from '../../api/ProductEndpoints'
+import { getProductCategories, create } from '../../api/ProductEndpoints'
 import { showMessage } from 'react-native-flash-message'
 import DropDownPicker from 'react-native-dropdown-picker'
-import { Formik } from 'formik'
+import { Formik, ErrorMessage } from 'formik'
+import * as yup from 'yup'
 
-export default function CreateProductScreen () {
+export default function CreateProductScreen ({ navigation }) {
   const [open, setOpen] = useState(false)
   const [productCategories, setProductCategories] = useState([])
   const initialProductValues = { name: null, description: null, price: null, order: null, productCategoryId: null, availability: true }
+  const [backendErrors, setBackendErrors] = useState()
 
   useEffect(() => {
     async function fetchProductCategories () {
@@ -51,11 +53,57 @@ export default function CreateProductScreen () {
       }
     }
   }
+
+  const validationSchema = yup.object().shape({
+    name: yup
+      .string()
+      .max(255, 'Name too long')
+      .required('Name is required'),
+    description: yup
+      .string()
+      .max(255, 'Description too long')
+      .required('Description is required'),
+    price: yup
+      .number()
+      .positive('Please provide a valid price value')
+      .required('Price value is required'),
+    order: yup
+      .number()
+      .nullable()
+      .positive('Please provide a valid order')
+      .integer(),
+    productCategoryId: yup
+      .number()
+      .positive()
+      .integer()
+      .required('Product category is required'),
+    availability: yup
+      .boolean()
+  })
+
+  const createProduct = async (values) => {
+    setBackendErrors([])
+    try {
+      const createdProduct = await create(values)
+      showMessage({
+        message: `Product ${createdProduct.name} succesfully created`,
+        type: 'success',
+        style: GlobalStyles.flashStyle,
+        titleStyle: GlobalStyles.flashTextStyle
+      })
+      navigation.navigate('RestaurantsScreen', { dirty: true })
+    } catch (error) {
+      console.log(error)
+      setBackendErrors(error.errors)
+    }
+  }
+
   return (
     <Formik
+     validationSchema={validationSchema}
      initialValues={initialProductValues}
-    >
-      {({ setFieldValue, values }) => (
+     onSubmit={createProduct}>
+      {({ handleSubmit, setFieldValue, values }) => (
         <ScrollView>
           <View style={{ alignItems: 'center' }}>
             <View style={{ width: '60%' }}>
@@ -90,6 +138,7 @@ export default function CreateProductScreen () {
                 style={{ backgroundColor: GlobalStyles.brandBackground }}
                 dropDownStyle={{ backgroundColor: '#fafafa' }}
               />
+              <ErrorMessage name={'productCategoryId'} render={msg => <TextError>{msg}</TextError> }/>
 
               <TextRegular style={styles.switch}>Is it available?</TextRegular>
               <Switch
@@ -116,7 +165,7 @@ export default function CreateProductScreen () {
               </Pressable>
 
               <Pressable
-                onPress={ () => console.log('Button pressed') }
+                onPress={handleSubmit}
                 style={({ pressed }) => [
                   {
                     backgroundColor: pressed
@@ -128,7 +177,9 @@ export default function CreateProductScreen () {
                 <View style={[{ flex: 1, flexDirection: 'row', justifyContent: 'center' }]}>
                   <MaterialCommunityIcons name='content-save' color={'white'} size={20}/>
                   <TextRegular textStyle={styles.text}>
-                    Save
+                    Save {backendErrors &&
+  backendErrors.map((error, index) => <TextError key={index}>{error.msg}</TextError>)
+}
                   </TextRegular>
                 </View>
               </Pressable>
